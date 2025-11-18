@@ -20,6 +20,32 @@ from openai import AzureOpenAI
 from difflib import SequenceMatcher
 from config import Config
 
+# backend.py
+import os
+import streamlit as st
+from dotenv import load_dotenv
+
+# Add this helper function RIGHT HERE (after imports, before any classes)
+def get_env_variable(key: str) -> str:
+    """
+    Get environment variable from Streamlit secrets (cloud) or .env (local)
+    """
+    # Try Streamlit secrets first (for cloud deployment)
+    try:
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    
+    # Fallback to environment variables (for local .env)
+    load_dotenv()
+    value = get_env_variable(key)
+    
+    if not value:
+        raise ValueError(f"❌ Missing environment variable: {key}")
+    
+    return value
+
 # Initialize config
 Config.setup()
 
