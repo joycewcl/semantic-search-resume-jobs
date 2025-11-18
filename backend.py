@@ -7,7 +7,7 @@ import os
 import re
 import time
 import json
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 import requests
 from docx import Document
@@ -65,7 +65,7 @@ class ResumeParser:
     def __init__(self):
         pass
     
-    def extract_text_from_pdf(self, pdf_file) -> str:
+    def extract_text_from_pdf(self, pdf_file: Any) -> str:
         """Extract text from PDF file object"""
         try:
             text = ""
@@ -78,7 +78,7 @@ class ResumeParser:
         except Exception as e:
             raise Exception(f"Error reading PDF: {str(e)}")
     
-    def extract_text_from_docx(self, docx_file) -> str:
+    def extract_text_from_docx(self, docx_file: Any) -> str:
         """Extract text from DOCX file object"""
         try:
             doc = Document(docx_file)
@@ -87,7 +87,7 @@ class ResumeParser:
         except Exception as e:
             raise Exception(f"Error reading DOCX: {str(e)}")
     
-    def extract_text(self, file_obj, filename: str) -> str:
+    def extract_text(self, file_obj: Any, filename: str) -> str:
         """Extract text from uploaded file"""
         if filename.lower().endswith('.pdf'):
             return self.extract_text_from_pdf(file_obj)
@@ -96,7 +96,7 @@ class ResumeParser:
         else:
             raise ValueError("Unsupported file format. Use PDF or DOCX.")
     
-    def parse_resume(self, file_obj, filename: str) -> Dict:
+    def parse_resume(self, file_obj: Any, filename: str) -> Dict[str, Any]:
         """Parse resume and extract raw text only"""
         try:
             text = self.extract_text(file_obj, filename)
@@ -104,7 +104,7 @@ class ResumeParser:
             if not text or len(text.strip()) < 50:
                 raise ValueError("Could not extract sufficient text from resume")
             
-            resume_data = {
+            resume_data: Dict[str, Any] = {
                 'raw_text': text,
                 'text_length': len(text),
                 'word_count': len(text.split()),
@@ -132,7 +132,7 @@ class GPT4JobRoleDetector:
         )
         self.model = get_env_variable('AZURE_OPENAI_DEPLOYMENT')
     
-    def analyze_resume_for_job_roles(self, resume_data: Dict) -> Dict:
+    def analyze_resume_for_job_roles(self, resume_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze resume with GPT-4 - Extract ALL skills dynamically"""
         
         resume_text = resume_data.get('raw_text', '')[:3000]
@@ -204,7 +204,7 @@ Be thorough and creative!"""
             print(f"❌ GPT-4 Error: {e}")
             return self._fallback_analysis()
     
-    def _fallback_analysis(self) -> Dict:
+    def _fallback_analysis(self) -> Dict[str, Any]:
         """Fallback if GPT-4 fails"""
         return {
             "primary_role": "Professional",
@@ -271,7 +271,7 @@ class LinkedInJobSearcher:
         keywords: str,
         location: str = "United States",
         limit: int = 20
-    ) -> List[Dict]:
+    ) -> List[Dict[str, Any]]:
         """Search LinkedIn jobs with simplified queries"""
         
         # Simplify complex queries
@@ -302,42 +302,27 @@ class LinkedInJobSearcher:
             
             if response.status_code == 403:
                 print("❌ API Key Error: 403 Forbidden")
-                print("   Your RapidAPI key might be invalid or expired")
-                print("   Check: https://rapidapi.com/")
                 return []
             
             elif response.status_code == 429:
                 print("❌ Rate Limit: 429 Too Many Requests")
-                print("   Wait a few minutes or upgrade your RapidAPI plan")
                 return []
             
             elif response.status_code != 200:
                 print(f"❌ API Error: {response.status_code}")
-                print(f"   Response: {response.text[:200]}")
                 return []
             
             data = response.json()
             
             # Handle different response formats
+            jobs: List[Any] = []
             if isinstance(data, list):
                 jobs = data
             elif isinstance(data, dict):
                 jobs = data.get('data', data.get('jobs', data.get('results', [])))
-            else:
-                jobs = []
             
             if not jobs:
                 print(f"⚠️ No jobs found for '{simple_keywords}'")
-                print("   Trying fallback searches...")
-                
-                # Try alternative searches
-                for alternative in self._get_alternative_searches(simple_keywords):
-                    alt_jobs = self._try_alternative_search(alternative, location, 10)
-                    if alt_jobs:
-                        print(f"✅ Found {len(alt_jobs)} jobs with alternative search: {alternative}")
-                        jobs.extend(alt_jobs)
-                        if len(jobs) >= 10:
-                            break
             
             normalized = self._normalize_jobs(jobs)
             print(f"✅ Retrieved {len(normalized)} jobs from RapidAPI")
@@ -349,77 +334,28 @@ class LinkedInJobSearcher:
     
     def _simplify_query(self, query: str) -> str:
         """Simplify complex boolean queries to simple terms"""
-        # Remove boolean operators and parentheses
         simple = query.replace(" OR ", " ").replace(" AND ", " ")
         simple = simple.replace("(", "").replace(")", "")
         simple = simple.replace('"', "")
         
-        # Take first few words (most important)
         words = simple.split()[:3]
         return " ".join(words)
     
-    def _get_alternative_searches(self, primary_query: str) -> List[str]:
-        """Generate alternative search terms"""
-        alternatives = [
-            primary_query.split()[0] if primary_query.split() else primary_query,
-            "Manager",
-            "Analyst",
-        ]
-        return alternatives
-    
-    def _try_alternative_search(self, keywords: str, location: str, limit: int) -> List[Dict]:
-        """Try an alternative search"""
-        try:
-            querystring = {
-                "limit": str(limit),
-                "offset": "0",
-                "title_filter": f'"{keywords}"',
-                "location_filter": f'"{location}"',
-                "description_type": "text"
-            }
-            
-            response = requests.get(
-                self.base_url,
-                headers=self.headers,
-                params=querystring,
-                timeout=20
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list):
-                    return data
-                elif isinstance(data, dict):
-                    return data.get('data', data.get('jobs', data.get('results', [])))
-            
-            return []
-        
-        except:
-            return []
-    
-    def _normalize_jobs(self, jobs: List[Dict]) -> List[Dict]:
+    def _normalize_jobs(self, jobs: List[Any]) -> List[Dict[str, Any]]:
         """Normalize job structure"""
-        normalized_jobs = []
+        normalized_jobs: List[Dict[str, Any]] = []
         
         for job in jobs:
             try:
-                # Handle location
+                if not isinstance(job, dict):
+                    continue
+                    
                 location = "Remote"
-                if job.get('locations_derived') and len(job['locations_derived']) > 0:
-                    location = job['locations_derived'][0]
-                elif job.get('locations_raw'):
-                    try:
-                        loc_raw = job['locations_raw'][0]
-                        if isinstance(loc_raw, dict) and 'address' in loc_raw:
-                            addr = loc_raw['address']
-                            city = addr.get('addressLocality', '')
-                            region = addr.get('addressRegion', '')
-                            if city and region:
-                                location = f"{city}, {region}"
-                    except:
-                        pass
+                locations_derived = job.get('locations_derived')
+                if locations_derived and len(locations_derived) > 0:
+                    location = str(locations_derived[0])
                 
-                normalized_job = {
+                normalized_job: Dict[str, Any] = {
                     'id': job.get('id', f"job_{len(normalized_jobs)}"),
                     'title': job.get('title', 'Unknown Title'),
                     'company': job.get('organization', 'Unknown Company'),
@@ -433,20 +369,18 @@ class LinkedInJobSearcher:
                 
                 normalized_jobs.append(normalized_job)
                 
-            except Exception as e:
+            except Exception:
                 continue
         
         return normalized_jobs
 
 
 # ============================================================================
-# ENHANCED JOB MATCHER - WITH ADVANCED SEMANTIC FEATURES
+# ENHANCED JOB MATCHER
 # ============================================================================
 
 class JobMatcher:
-    """
-    Enhanced Job Matcher with semantic matching and skill analysis
-    """
+    """Enhanced Job Matcher with semantic matching and skill analysis"""
     
     def __init__(self):
         # Initialize Pinecone
@@ -466,44 +400,61 @@ class JobMatcher:
     def _build_skill_synonyms(self) -> Dict[str, List[str]]:
         """Build skill synonym dictionary for better matching"""
         return {
-            # Programming Languages
             'python': ['python', 'py', 'python3', 'pythonic'],
             'javascript': ['javascript', 'js', 'node.js', 'nodejs'],
             'java': ['java', 'jvm'],
             'sql': ['sql', 'mysql', 'postgresql', 'database'],
-            
-            # Data & Analytics
             'data analysis': ['data analysis', 'analytics', 'data science'],
             'machine learning': ['machine learning', 'ml', 'ai'],
             'tableau': ['tableau', 'data visualization'],
-            
-            # Cloud
             'aws': ['aws', 'amazon web services'],
             'azure': ['azure', 'microsoft azure'],
-            
-            # Project Management
             'agile': ['agile', 'scrum', 'kanban'],
             'project management': ['project management', 'pm', 'pmp'],
         }
     
-    def _initialize_index(self):
-        """Initialize Pinecone index"""
+    def _initialize_index(self) -> None:
+        """Initialize Pinecone index with proper error handling"""
         index_name = get_env_variable('PINECONE_INDEX_NAME')
         
-        existing_indexes = [idx['name'] for idx in self.pc.list_indexes()]
+        # Handle different Pinecone API versions
+        existing_indexes: List[str] = []
+        try:
+            indexes_response = self.pc.list_indexes()
+            
+            # New Pinecone API (v3+)
+            if hasattr(indexes_response, 'names'):
+                existing_indexes = list(indexes_response.names())  # type: ignore
+            # Old Pinecone API (v2)
+            elif isinstance(indexes_response, list):
+                existing_indexes = [
+                    str(idx.get('name', idx)) if isinstance(idx, dict) else str(idx) 
+                    for idx in indexes_response
+                ]
+            else:
+                existing_indexes = [str(idx) for idx in indexes_response]  # type: ignore
+                    
+        except Exception as e:
+            print(f"⚠️ Warning: Could not list indexes: {e}")
+            existing_indexes = []
         
+        # Create index if it doesn't exist
         if index_name not in existing_indexes:
             print(f"🔨 Creating new Pinecone index: {index_name}")
-            self.pc.create_index(
-                name=index_name,
-                dimension=384,  # all-MiniLM-L6-v2 dimension
-                metric='cosine',
-                spec=ServerlessSpec(
-                    cloud='aws',
-                    region=get_env_variable('PINECONE_ENVIRONMENT')
+            try:
+                self.pc.create_index(
+                    name=index_name,
+                    dimension=384,
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                        cloud='aws',
+                        region=get_env_variable('PINECONE_ENVIRONMENT')
+                    )
                 )
-            )
-            time.sleep(2)
+                print("✅ Index created successfully!")
+                time.sleep(2)
+            except Exception as e:
+                print(f"⚠️ Could not create index: {e}")
         else:
             print(f"✅ Using existing Pinecone index: {index_name}")
         
@@ -518,36 +469,35 @@ class JobMatcher:
         embedding = self.model.encode(text, convert_to_tensor=False, normalize_embeddings=True)
         return embedding.tolist()
     
-    def index_jobs(self, jobs: List[Dict]) -> int:
+    def index_jobs(self, jobs: List[Dict[str, Any]]) -> int:
         """Index jobs in Pinecone"""
         if not jobs:
             return 0
         
-        vectors_to_upsert = []
+        vectors_to_upsert: List[Dict[str, Any]] = []
         
         for job in jobs:
             try:
-                # Create composite text
-                title = job['title']
-                company = job['company']
-                description = job['description'][:2000]
+                title = str(job.get('title', ''))
+                company = str(job.get('company', ''))
+                description = str(job.get('description', ''))[:2000]
                 
                 composite_text = f"{title} {title} {title} {company} {company} {description}"
                 
                 embedding = self.generate_embedding(composite_text)
                 
                 vectors_to_upsert.append({
-                    'id': job['id'],
+                    'id': str(job.get('id', f"job_{len(vectors_to_upsert)}")),
                     'values': embedding,
                     'metadata': {
-                        'title': job['title'][:512],
-                        'company': job['company'][:512],
-                        'location': job['location'][:512],
-                        'description': job['description'][:1000],
-                        'url': job.get('url', '')[:512],
+                        'title': str(job.get('title', ''))[:512],
+                        'company': str(job.get('company', ''))[:512],
+                        'location': str(job.get('location', ''))[:512],
+                        'description': str(job.get('description', ''))[:1000],
+                        'url': str(job.get('url', ''))[:512],
                         'posted_date': str(job.get('posted_date', ''))[:100],
-                        'linkedin_url': job.get('linkedin_url', '')[:512],
-                        'apply_url': job.get('apply_url', '')[:512],
+                        'linkedin_url': str(job.get('linkedin_url', ''))[:512],
+                        'apply_url': str(job.get('apply_url', ''))[:512],
                     }
                 })
                 
@@ -556,42 +506,47 @@ class JobMatcher:
                 continue
         
         if vectors_to_upsert:
-            self.index.upsert(vectors=vectors_to_upsert)
-            return len(vectors_to_upsert)
+            try:
+                self.index.upsert(vectors=vectors_to_upsert)  # type: ignore
+                return len(vectors_to_upsert)
+            except Exception as e:
+                print(f"❌ Error upserting to Pinecone: {e}")
+                return 0
         
         return 0
     
-    def search_similar_jobs(self, resume_data: Dict, ai_analysis: Dict, top_k: int = 20) -> List[Dict]:
+    def search_similar_jobs(self, resume_data: Dict[str, Any], ai_analysis: Dict[str, Any], top_k: int = 20) -> List[Dict[str, Any]]:
         """Search for similar jobs"""
         try:
-            # Extract components
-            primary_role = ai_analysis.get('primary_role', '')
+            primary_role = str(ai_analysis.get('primary_role', ''))
             skills = ai_analysis.get('skills', [])[:20]
             core_strengths = ai_analysis.get('core_strengths', [])[:5]
             
-            # Create query
             query_parts = [primary_role] * 3
-            query_parts.extend(skills)
-            query_parts.extend(core_strengths)
+            query_parts.extend([str(s) for s in skills])
+            query_parts.extend([str(s) for s in core_strengths])
             
             query_text = " ".join(query_parts)
             query_embedding = self.generate_embedding(query_text)
             
             print(f"🔍 Searching Pinecone for top {top_k} matches...")
-            results = self.index.query(
+            
+            results = self.index.query(  # type: ignore
                 vector=query_embedding,
                 top_k=top_k,
                 include_metadata=True
             )
             
-            matched_jobs = []
-            for match in results['matches']:
-                job = {
-                    'id': match['id'],
-                    'similarity_score': float(match['score']) * 100,
-                    'score': float(match['score']),
-                    **match['metadata']
+            matched_jobs: List[Dict[str, Any]] = []
+            for match in results.get('matches', []):  # type: ignore
+                job: Dict[str, Any] = {
+                    'id': match.get('id', ''),
+                    'similarity_score': float(match.get('score', 0)) * 100,
+                    'score': float(match.get('score', 0)),
                 }
+                metadata = match.get('metadata', {})
+                if metadata:
+                    job.update(metadata)
                 matched_jobs.append(job)
             
             return matched_jobs
@@ -608,7 +563,6 @@ class JobMatcher:
         if candidate_skill_lower in job_text_lower:
             return True
         
-        # Check synonyms
         for base_skill, synonyms in self.skill_synonyms.items():
             if candidate_skill_lower in synonyms:
                 for synonym in synonyms:
@@ -634,17 +588,17 @@ class JobMatcherBackend:
         self.matcher = JobMatcher()
         print("✅ Backend initialized!\n")
     
-    def process_resume(self, file_obj, filename: str) -> Tuple[Dict, Dict]:
+    def process_resume(self, file_obj: Any, filename: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Process resume"""
         resume_data = self.resume_parser.parse_resume(file_obj, filename)
         ai_analysis = self.gpt4_detector.analyze_resume_for_job_roles(resume_data)
         resume_data['skills'] = ai_analysis.get('skills', [])
         return resume_data, ai_analysis
     
-    def search_and_match_jobs(self, resume_data: Dict, ai_analysis: Dict, num_jobs: int = 30) -> List[Dict]:
+    def search_and_match_jobs(self, resume_data: Dict[str, Any], ai_analysis: Dict[str, Any], num_jobs: int = 30) -> List[Dict[str, Any]]:
         """Search and match jobs"""
-        search_query = ai_analysis.get('primary_role', 'Professional')
-        location = ai_analysis.get('location_preference', 'United States')
+        search_query = str(ai_analysis.get('primary_role', 'Professional'))
+        location = str(ai_analysis.get('location_preference', 'United States'))
         
         jobs = self.job_searcher.search_jobs(keywords=search_query, location=location, limit=num_jobs)
         
@@ -660,20 +614,20 @@ class JobMatcherBackend:
         
         return matched_jobs
     
-    def _calculate_match_scores(self, jobs: List[Dict], ai_analysis: Dict) -> List[Dict]:
+    def _calculate_match_scores(self, jobs: List[Dict[str, Any]], ai_analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Calculate match scores"""
-        candidate_skills = set([s.lower() for s in ai_analysis.get('skills', [])])
+        candidate_skills = set([str(s).lower() for s in ai_analysis.get('skills', [])])
         
         for job in jobs:
-            description = job.get('description', '').lower()
-            title = job.get('title', '').lower()
+            description = str(job.get('description', '')).lower()
+            title = str(job.get('title', '')).lower()
             
             # Skill match
             matched_skills = [s for s in candidate_skills if self.matcher._fuzzy_skill_match(s, f"{title} {description}")]
             skill_match_pct = (len(matched_skills) / len(candidate_skills) * 100) if candidate_skills else 0
             
             # Semantic score
-            semantic_score = job.get('similarity_score', 0)
+            semantic_score = float(job.get('similarity_score', 0))
             
             # Combined
             combined_score = 0.6 * semantic_score + 0.4 * skill_match_pct
@@ -682,16 +636,58 @@ class JobMatcherBackend:
             job['matched_skills'] = list(matched_skills)[:15]
             job['combined_score'] = round(combined_score, 1)
             job['overall_match'] = combined_score
+            job['semantic_score'] = semantic_score
+            job['match_explanation'] = f"Semantic match: {semantic_score:.0f}%, Skill match: {skill_match_pct:.0f}%"
             
         return jobs
 
 
 # Helper functions
-def extract_text_from_resume(uploaded_file):
+def extract_text_from_resume(uploaded_file: Any) -> str:
     """Extract text from resume"""
     parser = ResumeParser()
     resume_data = parser.parse_resume(uploaded_file, uploaded_file.name)
     return resume_data['raw_text']
+
+
+def search_jobs(resume_text: str, top_k: int = 10) -> List[Dict[str, Any]]:
+    """Search for jobs based on resume text"""
+    try:
+        backend = JobMatcherBackend()
+        
+        resume_data: Dict[str, Any] = {
+            'raw_text': resume_text,
+            'word_count': len(resume_text.split()),
+            'text_length': len(resume_text)
+        }
+        
+        ai_analysis = backend.gpt4_detector.analyze_resume_for_job_roles(resume_data)
+        resume_data['skills'] = ai_analysis.get('skills', [])
+        
+        jobs = backend.search_and_match_jobs(resume_data, ai_analysis, num_jobs=top_k)
+        return jobs
+    except Exception as e:
+        print(f"Error in search_jobs: {e}")
+        return []
+
+
+def extract_matching_skills(resume_text: str, job_description: str) -> List[str]:
+    """Extract matching skills"""
+    common_skills = [
+        'Python', 'JavaScript', 'React', 'SQL', 'AWS', 'Azure',
+        'Machine Learning', 'Data Science', 'Project Management', 
+        'Agile', 'Leadership', 'Communication'
+    ]
+    
+    resume_lower = resume_text.lower()
+    job_lower = job_description.lower()
+    
+    matching = [
+        skill for skill in common_skills
+        if skill.lower() in resume_lower and skill.lower() in job_lower
+    ]
+    
+    return matching[:15]
 
 
 if __name__ == "__main__":

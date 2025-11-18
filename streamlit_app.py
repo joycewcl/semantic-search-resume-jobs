@@ -1,23 +1,23 @@
 import streamlit as st
 import os
-from dotenv import load_dotenv
 import sys
 import pandas as pd
 import numpy as np
 from collections import Counter
+from typing import Dict, List, Optional, Any
+
+# Load environment variables for local development only
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except (ImportError, ModuleNotFoundError):
+    pass
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import from single backend.py file
-from backend import (
-    JobMatcherBackend,
-    ResumeParser,
-    GPT4JobRoleDetector,
-    extract_text_from_resume,
-    search_jobs,
-    extract_matching_skills
-)
+# Import backend functions
+from backend import JobMatcherBackend
 
 # Load environment variables
 load_dotenv()
