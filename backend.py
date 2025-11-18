@@ -1,6 +1,6 @@
 """
-Job Matcher Backend - ENHANCED VERSION
-With advanced semantic matching, skill extraction, and intelligent ranking
+Job Matcher Backend - FULLY ENHANCED VERSION
+With advanced semantic matching, skill extraction, intelligent ranking, and explainability
 """
 
 import os
@@ -15,7 +15,9 @@ import PyPDF2
 from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 import pandas as pd
+import numpy as np
 from openai import AzureOpenAI
+from difflib import SequenceMatcher
 from config import Config
 
 # Initialize config
@@ -328,9 +330,9 @@ class LinkedInJobSearcher:
     def _get_alternative_searches(self, primary_query: str) -> List[str]:
         """Generate alternative search terms"""
         alternatives = [
-            primary_query.split()[0] if primary_query.split() else primary_query,  # First word only
-            "Manager",  # Generic fallback
-            "Analyst",  # Generic fallback
+            primary_query.split()[0] if primary_query.split() else primary_query,
+            "Manager",
+            "Analyst",
         ]
         return alternatives
     
@@ -394,6 +396,8 @@ class LinkedInJobSearcher:
                     'description': job.get('description_text', ''),
                     'url': job.get('url', ''),
                     'posted_date': job.get('date_posted', 'Unknown'),
+                    'apply_url': job.get('url', ''),
+                    'linkedin_url': job.get('url', ''),
                 }
                 
                 normalized_jobs.append(normalized_job)
@@ -405,7 +409,7 @@ class LinkedInJobSearcher:
 
 
 # ============================================================================
-# 🆕 ENHANCED JOB MATCHER - WITH ADVANCED SEMANTIC FEATURES
+# ENHANCED JOB MATCHER - WITH ADVANCED SEMANTIC FEATURES
 # ============================================================================
 
 class JobMatcher:
@@ -415,6 +419,7 @@ class JobMatcher:
     - Weighted semantic scoring
     - Fuzzy skill matching with synonyms
     - Context-aware matching
+    - Explainability features
     """
     
     def __init__(self):
@@ -429,31 +434,114 @@ class JobMatcher:
         # Create/connect to index
         self._initialize_index()
         
-        # Initialize Azure OpenAI for semantic analysis
-        self.openai_client = AzureOpenAI(
-            azure_endpoint=Config.AZURE_ENDPOINT,
-            api_key=Config.AZURE_API_KEY,
-            api_version=Config.AZURE_API_VERSION
-        )
+        # Initialize Azure OpenAI for semantic analysis (if available)
+        try:
+            self.openai_client = AzureOpenAI(
+                azure_endpoint=Config.AZURE_ENDPOINT,
+                api_key=Config.AZURE_API_KEY,
+                api_version=Config.AZURE_API_VERSION
+            )
+        except:
+            self.openai_client = None
+            print("⚠️ Azure OpenAI not available - using fallback methods")
         
-        # Skill synonyms for fuzzy matching
+        # Expanded skill synonyms for better matching
         self.skill_synonyms = self._build_skill_synonyms()
     
     def _build_skill_synonyms(self) -> Dict[str, List[str]]:
-        """Build skill synonym dictionary for better matching"""
+        """EXPANDED skill synonym dictionary for better matching"""
         return {
-            'python': ['python', 'py', 'python3'],
-            'javascript': ['javascript', 'js', 'ecmascript', 'node.js', 'nodejs'],
-            'data analysis': ['data analysis', 'analytics', 'data analytics', 'statistical analysis'],
-            'machine learning': ['machine learning', 'ml', 'artificial intelligence', 'ai'],
-            'project management': ['project management', 'pm', 'program management', 'pmo'],
-            'sql': ['sql', 'mysql', 'postgresql', 'database'],
-            'leadership': ['leadership', 'team lead', 'management', 'people management'],
-            'agile': ['agile', 'scrum', 'kanban', 'sprint'],
-            'excel': ['excel', 'spreadsheet', 'ms excel', 'microsoft excel'],
-            'tableau': ['tableau', 'data visualization', 'dataviz'],
+            # Programming Languages
+            'python': ['python', 'py', 'python3', 'python2', 'pythonic'],
+            'javascript': ['javascript', 'js', 'ecmascript', 'node.js', 'nodejs', 'node'],
+            'typescript': ['typescript', 'ts'],
+            'java': ['java', 'jvm', 'java8', 'java11', 'java17'],
+            'c#': ['c#', 'csharp', 'c sharp', '.net', 'dotnet'],
+            'c++': ['c++', 'cpp', 'cplusplus'],
+            'ruby': ['ruby', 'rails', 'ruby on rails', 'ror'],
+            'go': ['go', 'golang'],
+            'rust': ['rust', 'rustlang'],
+            'kotlin': ['kotlin', 'kt'],
+            'swift': ['swift', 'swiftui'],
+            'php': ['php', 'php7', 'php8'],
+            'r': ['r', 'r programming', 'rstudio'],
+            'scala': ['scala', 'spark scala'],
+            'perl': ['perl', 'perl5'],
+            
+            # Data & Analytics
+            'sql': ['sql', 'mysql', 'postgresql', 'postgres', 't-sql', 'pl/sql', 'database', 'rdbms'],
+            'nosql': ['nosql', 'mongodb', 'cassandra', 'couchbase', 'dynamodb'],
+            'data analysis': ['data analysis', 'analytics', 'data analytics', 'statistical analysis', 'data science'],
+            'machine learning': ['machine learning', 'ml', 'artificial intelligence', 'ai', 'deep learning', 'neural networks'],
+            'data visualization': ['data visualization', 'dataviz', 'tableau', 'power bi', 'looker', 'qlik'],
+            'big data': ['big data', 'hadoop', 'spark', 'kafka', 'flink'],
+            'etl': ['etl', 'data pipeline', 'data integration', 'airflow'],
+            'data warehousing': ['data warehousing', 'data warehouse', 'snowflake', 'redshift', 'bigquery'],
+            
+            # Cloud & DevOps
+            'aws': ['aws', 'amazon web services', 'ec2', 's3', 'lambda', 'cloudformation'],
+            'azure': ['azure', 'microsoft azure', 'azuredevops'],
+            'gcp': ['gcp', 'google cloud', 'google cloud platform'],
+            'docker': ['docker', 'containerization', 'containers', 'dockerfiles'],
+            'kubernetes': ['kubernetes', 'k8s', 'orchestration', 'helm', 'kubectl'],
+            'ci/cd': ['ci/cd', 'continuous integration', 'continuous deployment', 'jenkins', 'gitlab ci', 'github actions'],
+            'terraform': ['terraform', 'infrastructure as code', 'iac'],
+            'ansible': ['ansible', 'configuration management'],
+            'jenkins': ['jenkins', 'ci', 'continuous integration'],
+            
+            # Web Development
+            'react': ['react', 'reactjs', 'react.js', 'react native'],
+            'angular': ['angular', 'angularjs', 'angular2+'],
+            'vue': ['vue', 'vuejs', 'vue.js', 'vue3'],
+            'frontend': ['frontend', 'front-end', 'front end', 'ui development'],
+            'backend': ['backend', 'back-end', 'back end', 'server-side'],
+            'fullstack': ['fullstack', 'full-stack', 'full stack'],
+            'html': ['html', 'html5', 'markup'],
+            'css': ['css', 'css3', 'sass', 'scss', 'less', 'styling'],
+            'rest api': ['rest api', 'restful', 'rest', 'api'],
+            'graphql': ['graphql', 'graph ql'],
+            
+            # Project Management
+            'agile': ['agile', 'scrum', 'kanban', 'sprint', 'scrummaster'],
+            'project management': ['project management', 'pm', 'program management', 'pmo', 'pmp'],
+            'jira': ['jira', 'atlassian', 'confluence'],
+            'waterfall': ['waterfall', 'traditional pm'],
+            'lean': ['lean', 'lean methodology', 'lean six sigma'],
+            'six sigma': ['six sigma', '6 sigma', 'dmaic'],
+            
+            # Soft Skills
+            'leadership': ['leadership', 'team lead', 'management', 'people management', 'mentoring'],
+            'communication': ['communication', 'presentation', 'stakeholder management', 'public speaking'],
+            'problem solving': ['problem solving', 'troubleshooting', 'analytical thinking'],
+            'teamwork': ['teamwork', 'collaboration', 'team player'],
+            'time management': ['time management', 'organization', 'prioritization'],
+            
+            # Tools
+            'git': ['git', 'github', 'gitlab', 'bitbucket', 'version control'],
+            'excel': ['excel', 'spreadsheet', 'ms excel', 'microsoft excel', 'vlookup', 'pivot tables'],
             'salesforce': ['salesforce', 'sfdc', 'crm'],
-            'communication': ['communication', 'presentation', 'stakeholder management'],
+            'sap': ['sap', 'sap erp', 'sap hana'],
+            'tableau': ['tableau', 'data visualization', 'dataviz'],
+            'power bi': ['power bi', 'powerbi', 'microsoft power bi'],
+            'jupyter': ['jupyter', 'jupyter notebook', 'ipython'],
+            'vscode': ['vscode', 'visual studio code', 'vs code'],
+            
+            # Testing & QA
+            'testing': ['testing', 'qa', 'quality assurance', 'test automation'],
+            'selenium': ['selenium', 'selenium webdriver'],
+            'jest': ['jest', 'unit testing'],
+            'pytest': ['pytest', 'python testing'],
+            
+            # Security
+            'cybersecurity': ['cybersecurity', 'security', 'infosec', 'information security'],
+            'penetration testing': ['penetration testing', 'pen testing', 'ethical hacking'],
+            'encryption': ['encryption', 'cryptography'],
+            
+            # Business & Finance
+            'financial analysis': ['financial analysis', 'finance', 'accounting'],
+            'business analysis': ['business analysis', 'ba', 'requirements gathering'],
+            'strategy': ['strategy', 'strategic planning', 'business strategy'],
+            'marketing': ['marketing', 'digital marketing', 'seo', 'sem'],
         }
     
     def _initialize_index(self):
@@ -478,21 +566,21 @@ class JobMatcher:
         
         self.index = self.pc.Index(Config.INDEX_NAME)
     
-    def generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding vector"""
+    def generate_embedding(self, text: str, normalize: bool = True) -> List[float]:
+        """Generate normalized embedding for better cosine similarity"""
         text = str(text).strip()
         if not text:
             text = "empty"
         
-        embedding = self.model.encode(text, convert_to_tensor=False)
+        embedding = self.model.encode(
+            text,
+            convert_to_tensor=False,
+            normalize_embeddings=normalize
+        )
         return embedding.tolist()
     
     def index_jobs(self, jobs: List[Dict]) -> int:
-        """
-        Index jobs with ENHANCED multi-vector approach:
-        - Composite embedding (title + description + extracted skills)
-        - Store metadata for skill-based matching
-        """
+        """Index jobs with ENHANCED multi-vector approach"""
         if not jobs:
             return 0
         
@@ -503,7 +591,7 @@ class JobMatcher:
                 # Create composite text with weighted components
                 title = job['title']
                 company = job['company']
-                description = job['description'][:2000]  # Limit description length
+                description = job['description'][:2000]
                 
                 # Weight: title 3x, company 2x, description 1x
                 composite_text = f"{title} {title} {title} {company} {company} {description}"
@@ -520,7 +608,9 @@ class JobMatcher:
                         'location': job['location'][:512],
                         'description': job['description'][:1000],
                         'url': job.get('url', '')[:512],
-                        'posted_date': str(job.get('posted_date', ''))[:100]
+                        'posted_date': str(job.get('posted_date', ''))[:100],
+                        'linkedin_url': job.get('linkedin_url', '')[:512],
+                        'apply_url': job.get('apply_url', '')[:512],
                     }
                 })
                 
@@ -535,12 +625,7 @@ class JobMatcher:
         return 0
     
     def search_similar_jobs(self, resume_data: Dict, ai_analysis: Dict, top_k: int = 20) -> List[Dict]:
-        """
-        🆕 ENHANCED semantic search with:
-        - Weighted query composition
-        - Multi-criteria matching
-        - Context-aware ranking
-        """
+        """ENHANCED semantic search with weighted query composition"""
         try:
             # Extract components from AI analysis
             primary_role = ai_analysis.get('primary_role', '')
@@ -589,6 +674,8 @@ class JobMatcher:
                 job = {
                     'id': match['id'],
                     'similarity_score': float(match['score']) * 100,
+                    'score': float(match['score']),
+                    'cosine_similarity': float(match['score']),
                     **match['metadata']
                 }
                 matched_jobs.append(job)
@@ -600,11 +687,8 @@ class JobMatcher:
             print(f"❌ Search error: {e}")
             return []
     
-    def _fuzzy_skill_match(self, candidate_skill: str, job_text: str) -> bool:
-        """
-        🆕 Fuzzy skill matching with synonyms
-        Returns True if skill or any synonym is found in job text
-        """
+    def _fuzzy_skill_match(self, candidate_skill: str, job_text: str, threshold: float = 0.85) -> bool:
+        """ENHANCED fuzzy skill matching with synonyms and edit distance"""
         candidate_skill_lower = candidate_skill.lower()
         job_text_lower = job_text.lower()
         
@@ -619,11 +703,20 @@ class JobMatcher:
                     if synonym in job_text_lower:
                         return True
         
+        # Fuzzy string matching for typos/variations
+        words = job_text_lower.split()
+        for word in words:
+            if len(word) < 3:
+                continue
+            similarity = SequenceMatcher(None, candidate_skill_lower, word).ratio()
+            if similarity >= threshold:
+                return True
+        
         return False
 
 
 # ============================================================================
-# 🆕 ENHANCED MAIN BACKEND - WITH ADVANCED SCORING
+# ENHANCED MAIN BACKEND - WITH ADVANCED SCORING
 # ============================================================================
 
 class JobMatcherBackend:
@@ -632,6 +725,7 @@ class JobMatcherBackend:
     - Advanced semantic matching
     - Multi-criteria scoring
     - GPT-4 powered match explanations
+    - Explainability features
     """
     
     def __init__(self):
@@ -643,11 +737,15 @@ class JobMatcherBackend:
         self.matcher = JobMatcher()
         
         # Initialize Azure OpenAI for match explanations
-        self.openai_client = AzureOpenAI(
-            azure_endpoint=Config.AZURE_ENDPOINT,
-            api_key=Config.AZURE_API_KEY,
-            api_version=Config.AZURE_API_VERSION
-        )
+        try:
+            self.openai_client = AzureOpenAI(
+                azure_endpoint=Config.AZURE_ENDPOINT,
+                api_key=Config.AZURE_API_KEY,
+                api_version=Config.AZURE_API_VERSION
+            )
+        except:
+            self.openai_client = None
+            print("⚠️ Azure OpenAI not available")
         
         # Test API connection
         print("\n🧪 Testing RapidAPI connection...")
@@ -673,20 +771,16 @@ class JobMatcherBackend:
         
         # Add skills to resume_data
         resume_data['skills'] = ai_analysis.get('skills', [])
+        resume_data['ai_analysis'] = ai_analysis
         
         return resume_data, ai_analysis
     
     def search_and_match_jobs(self, resume_data: Dict, ai_analysis: Dict, num_jobs: int = 30) -> List[Dict]:
-        """
-        🆕 ENHANCED search and matching with:
-        - Multi-criteria scoring (semantic + skills + title match)
-        - Contextual ranking
-        - Match explanations
-        """
+        """ENHANCED search and matching with multi-criteria scoring"""
         
         # Use simplified search query
         search_query = ai_analysis.get('primary_role', 'Professional')
-        location = "United States"
+        location = ai_analysis.get('location_preference', 'United States')
         
         print(f"\n{'='*60}")
         print(f"🌍 SEARCHING JOBS WITH ENHANCED MATCHING")
@@ -738,7 +832,7 @@ class JobMatcherBackend:
             print("⚠️ No matches found")
             return []
         
-        # 🆕 Calculate ENHANCED match scores
+        # Calculate ENHANCED match scores
         matched_jobs = self._calculate_enhanced_match_scores(matched_jobs, ai_analysis, resume_data)
         
         # Sort by combined score
@@ -751,7 +845,7 @@ class JobMatcherBackend:
     
     def _calculate_enhanced_match_scores(self, jobs: List[Dict], ai_analysis: Dict, resume_data: Dict) -> List[Dict]:
         """
-        🆕 ENHANCED multi-criteria match scoring:
+        ENHANCED multi-criteria match scoring:
         - 40% Semantic similarity (Pinecone cosine)
         - 30% Skill match (fuzzy + synonyms)
         - 20% Title relevance
@@ -771,9 +865,7 @@ class JobMatcherBackend:
             description = job.get('description', '').lower()
             title = job.get('title', '').lower()
             
-            # ==========================================
-            # 1. SKILL MATCH (30%) - Fuzzy matching
-            # ==========================================
+            # 1. SKILL MATCH (30%)
             matched_skills = []
             for skill in candidate_skills:
                 if self.matcher._fuzzy_skill_match(skill, f"{title} {description}"):
@@ -781,30 +873,24 @@ class JobMatcherBackend:
             
             skill_match_pct = (len(matched_skills) / len(candidate_skills) * 100) if candidate_skills else 0
             
-            # ==========================================
-            # 2. SEMANTIC SIMILARITY (40%) - From Pinecone
-            # ==========================================
-            semantic_score = job.get('similarity_score', 0)
+            # 2. SEMANTIC SIMILARITY (40%)
+            semantic_score = job.get('similarity_score', job.get('score', 0) * 100)
             
-            # ==========================================
-            # 3. TITLE RELEVANCE (20%) - Role match
-            # ==========================================
+            # 3. TITLE RELEVANCE (20%)
             title_match_score = 0
             if primary_role:
-                # Check if primary role words appear in job title
                 role_words = primary_role.split()
                 title_words_found = sum(1 for word in role_words if word in title)
                 title_match_score = (title_words_found / len(role_words) * 100) if role_words else 0
             
-            # ==========================================
             # 4. EXPERIENCE LEVEL MATCH (10%)
-            # ==========================================
             exp_match_score = 0
             seniority_keywords = {
                 'junior': ['junior', 'entry', 'associate', 'jr'],
                 'mid-level': ['mid', 'intermediate', 'specialist'],
                 'senior': ['senior', 'lead', 'principal', 'sr'],
-                'executive': ['director', 'vp', 'executive', 'chief', 'head of']
+                'executive': ['director', 'vp', 'executive', 'chief', 'head of'],
+                'lead': ['lead', 'senior', 'principal']
             }
             
             if seniority in seniority_keywords:
@@ -812,11 +898,9 @@ class JobMatcherBackend:
                 if any(keyword in title or keyword in description[:500] for keyword in keywords):
                     exp_match_score = 100
                 else:
-                    exp_match_score = 50  # Partial match
+                    exp_match_score = 50
             
-            # ==========================================
-            # COMBINED SCORE (Weighted Average)
-            # ==========================================
+            # COMBINED SCORE
             combined_score = (
                 0.40 * semantic_score +
                 0.30 * skill_match_pct +
@@ -828,26 +912,58 @@ class JobMatcherBackend:
             job['skill_match_percentage'] = round(skill_match_pct, 1)
             job['title_match_score'] = round(title_match_score, 1)
             job['experience_match_score'] = round(exp_match_score, 1)
-            job['matched_skills'] = list(matched_skills)[:10]
+            job['matched_skills'] = list(matched_skills)[:15]
+            job['matching_skills'] = list(matched_skills)[:10]
             job['matched_skills_count'] = len(matched_skills)
             job['combined_score'] = round(combined_score, 1)
             job['semantic_score'] = round(semantic_score, 1)
+            job['score'] = combined_score / 100
+            job['overall_match'] = combined_score
+            job['semantic_match'] = semantic_score
+            job['skill_match'] = skill_match_pct
             
-            # 🆕 Generate match explanation
+            # Generate match explanation
             job['match_explanation'] = self._generate_match_explanation(
-                job, skill_match_pct, title_match_score, exp_match_score
+                job, skill_match_pct, title_match_score, exp_match_score, semantic_score
             )
+            
+            # Add match strength category
+            if combined_score >= 80:
+                job['match_category'] = 'Excellent'
+                job['match_emoji'] = '🟢'
+            elif combined_score >= 65:
+                job['match_category'] = 'Very Good'
+                job['match_emoji'] = '🟢'
+            elif combined_score >= 50:
+                job['match_category'] = 'Good'
+                job['match_emoji'] = '🟡'
+            elif combined_score >= 35:
+                job['match_category'] = 'Fair'
+                job['match_emoji'] = '🟠'
+            else:
+                job['match_category'] = 'Potential'
+                job['match_emoji'] = '🔴'
         
         return jobs
     
-    def _generate_match_explanation(self, job: Dict, skill_pct: float, title_pct: float, exp_pct: float) -> str:
-        """🆕 Generate human-readable match explanation"""
+    def _generate_match_explanation(self, job: Dict, skill_pct: float, title_pct: float, 
+                                   exp_pct: float, semantic_pct: float) -> str:
+        """Generate human-readable match explanation"""
         reasons = []
+        
+        if semantic_pct >= 80:
+            reasons.append(f"Excellent semantic match ({semantic_pct:.0f}%)")
+        elif semantic_pct >= 60:
+            reasons.append(f"Strong semantic alignment ({semantic_pct:.0f}%)")
+        elif semantic_pct >= 40:
+            reasons.append(f"Good contextual fit ({semantic_pct:.0f}%)")
         
         if skill_pct >= 60:
             reasons.append(f"Strong skill match ({skill_pct:.0f}%)")
         elif skill_pct >= 40:
             reasons.append(f"Good skill alignment ({skill_pct:.0f}%)")
+        elif skill_pct >= 20:
+            reasons.append(f"Some skill overlap ({skill_pct:.0f}%)")
         
         if title_pct >= 70:
             reasons.append("Title highly relevant")
@@ -859,8 +975,86 @@ class JobMatcherBackend:
         
         if job.get('matched_skills_count', 0) >= 5:
             reasons.append(f"{job['matched_skills_count']} key skills match")
+        elif job.get('matched_skills_count', 0) >= 3:
+            reasons.append(f"{job['matched_skills_count']} skills match")
         
         if not reasons:
-            reasons.append("Semantic similarity detected")
+            reasons.append("Contextual similarity detected")
         
         return " • ".join(reasons)
+
+
+# ============================================================================
+# HELPER FUNCTIONS FOR STREAMLIT INTEGRATION
+# ============================================================================
+
+def extract_text_from_resume(uploaded_file):
+    """Helper function for Streamlit - extracts text from resume"""
+    parser = ResumeParser()
+    try:
+        resume_data = parser.parse_resume(uploaded_file, uploaded_file.name)
+        return resume_data['raw_text']
+    except Exception as e:
+        raise Exception(f"Error extracting text: {str(e)}")
+
+
+def search_jobs(resume_text: str, top_k: int = 10) -> List[Dict]:
+    """Helper function for Streamlit - simple interface for job search"""
+    try:
+        # Create temporary resume data
+        resume_data = {
+            'raw_text': resume_text,
+            'word_count': len(resume_text.split()),
+            'text_length': len(resume_text)
+        }
+        
+        # Initialize backend components
+        backend = JobMatcherBackend()
+        
+        # Get AI analysis
+        ai_analysis = backend.gpt4_detector.analyze_resume_for_job_roles(resume_data)
+        resume_data['skills'] = ai_analysis.get('skills', [])
+        
+        # Search and match jobs
+        jobs = backend.search_and_match_jobs(resume_data, ai_analysis, num_jobs=top_k)
+        
+        return jobs
+    
+    except Exception as e:
+        print(f"Error in search_jobs: {e}")
+        return []
+
+
+def extract_matching_skills(resume_text: str, job_description: str) -> List[str]:
+    """Helper function to extract matching skills"""
+    common_skills = [
+        'Python', 'JavaScript', 'React', 'Node.js', 'SQL', 'AWS', 'Azure',
+        'Docker', 'Kubernetes', 'Machine Learning', 'Data Science',
+        'Project Management', 'Scrum', 'Agile', 'Leadership', 'Communication',
+        'Tableau', 'Excel', 'Salesforce', 'Java', 'C++', 'Git'
+    ]
+    
+    resume_lower = resume_text.lower()
+    job_lower = job_description.lower()
+    
+    matching = [
+        skill for skill in common_skills
+        if skill.lower() in resume_lower and skill.lower() in job_lower
+    ]
+    
+    return matching[:15]
+
+
+# Test if run directly
+if __name__ == "__main__":
+    print("✅ Backend module loaded successfully!")
+    print("\nAvailable classes:")
+    print("  - ResumeParser")
+    print("  - GPT4JobRoleDetector")
+    print("  - LinkedInJobSearcher")
+    print("  - JobMatcher")
+    print("  - JobMatcherBackend")
+    print("\nHelper functions:")
+    print("  - extract_text_from_resume()")
+    print("  - search_jobs()")
+    print("  - extract_matching_skills()")

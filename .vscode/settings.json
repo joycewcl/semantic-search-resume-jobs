@@ -1,0 +1,14 @@
+{
+    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.extraPaths": ["./backend"],
+    "python.analysis.memory.keepLibraryAst": false,
+    "python.analysis.memory.keepLibraryLocalVariables": false,
+    "python.analysis.exclude": [
+        "**/venv/**",
+        "**/.venv/**",
+        "**/env/**",
+        "**/__pycache__/**",
+        "**/node_modules/**"
+    ]
+}
